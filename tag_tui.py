@@ -120,6 +120,89 @@ def export_markdown(tags, full_names):
         return f"导出 Markdown 时出错：{str(e)}"
 
 class TagApp:
+    def make_items(self, view_mode, focus_position=None):
+        items = []
+        if view_mode == 'all':
+            tagged_repos = []
+            untagged_repos = []
+            for item in self.full_names:
+                full_name = item['full_name']
+                tags_list = self.tags.get(full_name, []) 
+                if tags_list:
+                    tagged_repos.append((item, tags_list))
+                else:
+                    untagged_repos.append(item)
+            for item, tags_list in tagged_repos:
+                tag_str = ' '.join(tags_list)
+                txt = f"[{item['category']}] {item['full_name']}  标签: {tag_str}"
+                w = urwid.Text(txt)
+                items.append(w)
+            if untagged_repos:
+                items.append(urwid.Divider())
+                items.append(urwid.Text("--- 未打标签的仓库 ---"))
+                items.append(urwid.Divider())
+                for item in untagged_repos:
+                    txt = f"[{item['category']}] {item['full_name']}  标签: 无"
+                    w = urwid.Text(txt)
+                    items.append(w)
+        elif view_mode == 'untagged':
+            items.append(urwid.Text("--- 未打标签的仓库 ---"))
+            items.append(urwid.Divider())
+            has_untagged = False
+            for item in self.full_names:
+                full_name = item['full_name']
+                tags_list = self.tags.get(full_name, [])
+                if not tags_list:
+                    txt = f"[{item['category']}] {item['full_name']}  标签: 无"
+                    w = urwid.Text(txt)
+                    items.append(w)
+                    has_untagged = True
+            if not has_untagged:
+                items.append(urwid.Text("所有仓库都已打标签！"))
+        return items
+
+    def wrap_focusable_items(self, items):
+        # 只包裹真正可选的仓库项，且返回 (focusable_items, focus_map)
+        focusable_items = []
+        focus_map = []
+        for w in items:
+            if isinstance(w, urwid.Text):
+                text = w.get_text()[0]
+                if not text.startswith('---') and not text.startswith('所有仓库'):
+                    focusable_items.append(urwid.AttrMap(w, None, 'focus'))
+                    focus_map.append(True)
+                else:
+                    focusable_items.append(w)
+                    focus_map.append(False)
+            else:
+                focusable_items.append(w)
+                focus_map.append(False)
+        return focusable_items, focus_map
+
+    def get_logical_index(self, real_idx):
+        # real_idx为focusable_items中的索引，返回第几个可选项
+        items = self.make_items(self.view_mode)
+        _, focus_map = self.wrap_focusable_items(items)
+        count = -1
+        for i, is_focus in enumerate(focus_map):
+            if is_focus:
+                count += 1
+            if i == real_idx:
+                return count
+        return 0
+
+    def get_focusable_index(self, n):
+        # n为逻辑选中项（如listbox.focus_position），返回第n个可选项在focusable_items中的真实索引
+        items = self.make_items(self.view_mode)
+        _, focus_map = self.wrap_focusable_items(items)
+        count = -1
+        for i, is_focus in enumerate(focus_map):
+            if is_focus:
+                count += 1
+            if count == n:
+                return i
+        return 0
+
     def __init__(self, full_names):
         self.full_names = full_names
         
@@ -141,71 +224,29 @@ class TagApp:
         # 更新使用说明，添加切换视图和导出 Markdown 的提示
         self.info = urwid.Text(u"使用说明：\n1. 使用上下键选择仓库\n2. 按回车键打开标签输入窗口\n3. 输入标签（用空格分隔）\n4. 点击确定保存\n5. 按 q 键保存并退出\n6. 按 m 键导出Markdown\n7. 使用左右键切换视图 (全部/未打标签)")
         
-        # 根据当前视图模式创建列表
-        self.listbox = urwid.ListBox(urwid.SimpleFocusListWalker(self.make_items(self.view_mode)))
+        # 只用 AttrMap 包裹可选项，并在 SimpleFocusListWalker 里
+        items = self.make_items(self.view_mode)
+        focusable_items, _ = self.wrap_focusable_items(items)
+        self.listbox = urwid.ListBox(urwid.SimpleFocusListWalker(focusable_items))
         
         # 创建一个用于显示状态信息的文本组件
         self.status_text = urwid.Text(u"")
         
+        # 必须先创建 self.frame，后面 update_list 不要再重新赋值 self.listbox.body
         self.frame = urwid.Frame(
             urwid.AttrWrap(self.listbox, 'body'),
-            footer=urwid.Pile([self.info, self.edit, self.status_text]) # 将状态信息添加到 footer
+            footer=urwid.Pile([self.info, self.edit, self.status_text])
         )
         logger.info("TagApp 初始化完成")
 
-    def make_items(self, view_mode):
-        items = []
-        
-        if view_mode == 'all':
-            # 显示所有仓库，已打标签的仓库在最后有一个未打标签分类
-            tagged_repos = []
-            untagged_repos = []
-
-            for item in self.full_names:
-                full_name = item['full_name']
-                tags_list = self.tags.get(full_name, []) 
-                
-                if tags_list:
-                    tagged_repos.append((item, tags_list))
-                else:
-                    untagged_repos.append(item)
-
-            # 添加已打标签的仓库
-            for item, tags_list in tagged_repos:
-                tag_str = ' '.join(tags_list)
-                txt = f"[{item['category']}] {item['full_name']}  标签: {tag_str}"
-                items.append(urwid.Text(txt))
-                
-            # 添加未打标签的仓库分类
-            if untagged_repos:
-                items.append(urwid.Divider())
-                items.append(urwid.Text("--- 未打标签的仓库 ---"))
-                items.append(urwid.Divider())
-                for item in untagged_repos:
-                     txt = f"[{item['category']}] {item['full_name']}  标签: 无"
-                     items.append(urwid.Text(txt))
-                     
-        elif view_mode == 'untagged':
-            # 只显示未打标签的仓库
-            items.append(urwid.Text("--- 未打标签的仓库 ---"))
-            items.append(urwid.Divider())
-            has_untagged = False
-            for item in self.full_names:
-                full_name = item['full_name']
-                tags_list = self.tags.get(full_name, [])
-                if not tags_list:
-                    txt = f"[{item['category']}] {item['full_name']}  标签: 无"
-                    items.append(urwid.Text(txt))
-                    has_untagged = True
-            
-            if not has_untagged:
-                 items.append(urwid.Text("所有仓库都已打标签！"))
-
-        return items
-
     def update_list(self):
-        # 根据当前视图模式更新列表
-        self.listbox.body[:] = self.make_items(self.view_mode)
+        items = self.make_items(self.view_mode)
+        focusable_items, focus_map = self.wrap_focusable_items(items)
+        # 保持逻辑选中项不变
+        logical_idx = self.get_logical_index(self.listbox.focus_position)
+        self.listbox.body[:] = focusable_items
+        # 重新设置焦点到逻辑选中项
+        self.listbox.focus_position = self.get_focusable_index(logical_idx)
         logger.debug(f"更新列表显示 - 视图模式: {self.view_mode}")
 
     def open_tag_popup(self, idx):
@@ -337,12 +378,13 @@ class TagApp:
                 unhandled_input=self.unhandled
             )
             self.loop = loop
-            # 给 listbox 绑定 enter 事件
             orig_keypress = self.listbox.keypress
             def listbox_keypress(size, key):
+                # 只对可选项做处理
+                idx = self.listbox.focus_position
+                logical_idx = self.get_logical_index(idx)
                 if key == 'enter':
-                    idx = self.listbox.focus_position
-                    self.open_tag_popup(idx)
+                    self.open_tag_popup(logical_idx)
                     return None
                 return orig_keypress(size, key)
             self.listbox.keypress = listbox_keypress
