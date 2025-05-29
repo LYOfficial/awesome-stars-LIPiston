@@ -1,0 +1,25 @@
+<div align="center">
+
+# awesome-stars-LIPiston
+
+⭐ 我的star列表，每天凌晨自动更新
+
+<img src="https://cdn.jsdelivr.net/gh/eryajf/tu@main/img/image_20240420_214408.gif" width="800"  height="3">
+</div><br>
+
+[我自己的分类](tagged_repositories.md)
+[README](README.md)
+[TOPICS](TOPICS.md)
+
+## Table of Contents
+
+<% for(let [language, repositories] of stars) { %>
+## <%= language %>
+  <% for(let repo of repositories) { %>
+- [<%= repo.full_name %>](<%= repo.html_url %>) - <%= repo.description %>
+  <% } %>
+<% } %>
+
+## Thanks
+
+- generated with [simonecorsi/mawesome](https://github.com/simonecorsi/mawesome)
