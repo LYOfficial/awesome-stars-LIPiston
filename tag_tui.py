@@ -1,3 +1,7 @@
+# 有🐛bug
+# 高亮的仓库和选中的仓库在未打标签模式下会有问题
+# 上下移动时有问题，会从最下面突然到最上面然后又回来
+
 import urwid
 import json
 import os
