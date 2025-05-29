@@ -10,6 +10,8 @@ on:
 
 jobs:
   build:
+    permissions:  # 提升权限
+      contents: write  # 需要推送时
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
