@@ -1,15 +1,29 @@
 {
   "akashaProxy/akashaProxy": [
-    "代理",
-    "工具"
+    "代理"
   ],
-  "fscarmen/ArgoX": [],
-  "frankiejun/serv00-play": [],
-  "eooce/Sing-box": [],
-  "yonggekkk/sing-box-yg": [],
-  "SuperManito/LinuxMirrors": [],
-  "chenzyadb/CuprumTurbo-Scheduler": [],
-  "aormsby/Fork-Sync-With-Upstream-action": [],
+  "fscarmen/ArgoX": [
+    "代理"
+  ],
+  "frankiejun/serv00-play": [
+    "面板",
+    "代理"
+  ],
+  "eooce/Sing-box": [
+    "代理"
+  ],
+  "yonggekkk/sing-box-yg": [
+    "代理"
+  ],
+  "SuperManito/LinuxMirrors": [
+    "Linux"
+  ],
+  "chenzyadb/CuprumTurbo-Scheduler": [
+    "magisk"
+  ],
+  "aormsby/Fork-Sync-With-Upstream-action": [
+    "action"
+  ],
   "yonggekkk/warp-yg": [],
   "cmj2002/warp-docker": [],
   "Unofficial-Life/Lawnchair-Launcher-Module": [],

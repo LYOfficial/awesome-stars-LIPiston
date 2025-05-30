@@ -126,86 +126,47 @@ def export_markdown(tags, full_names):
 class TagApp:
     def make_items(self, view_mode, focus_position=None):
         items = []
+        # 只用当前列表的 focus_position
+        selected_idx = self.listbox.focus_position if hasattr(self, 'listbox') else 0
         if view_mode == 'all':
             tagged_repos = []
             untagged_repos = []
             for item in self.full_names:
                 full_name = item['full_name']
-                tags_list = self.tags.get(full_name, []) 
+                tags_list = self.tags.get(full_name, [])
                 if tags_list:
                     tagged_repos.append((item, tags_list))
                 else:
                     untagged_repos.append(item)
-            for item, tags_list in tagged_repos:
-                tag_str = ' '.join(tags_list)
-                txt = f"[{item['category']}] {item['full_name']}  标签: {tag_str}"
-                w = urwid.Text(txt)
-                items.append(w)
-            if untagged_repos:
-                items.append(urwid.Divider())
-                items.append(urwid.Text("--- 未打标签的仓库 ---"))
-                items.append(urwid.Divider())
-                for item in untagged_repos:
-                    txt = f"[{item['category']}] {item['full_name']}  标签: 无"
-                    w = urwid.Text(txt)
-                    items.append(w)
+            all_repos = tagged_repos + [(item, []) for item in untagged_repos]
+            for idx, (item, tags_list) in enumerate(all_repos):
+                is_selected = (idx == selected_idx)
+                tag_str = ' '.join(tags_list) if tags_list else '无'
+                select_mark = '[X]' if is_selected else '[ ]'
+                color = 'error' if tags_list else 'body'
+                txt = f"{select_mark} [{item['category']}] {item['full_name']}  标签: {tag_str}"
+                items.append(urwid.Text((color, txt)))
         elif view_mode == 'untagged':
-            items.append(urwid.Text("--- 未打标签的仓库 ---"))
-            items.append(urwid.Divider())
-            has_untagged = False
-            for item in self.full_names:
-                full_name = item['full_name']
-                tags_list = self.tags.get(full_name, [])
-                if not tags_list:
-                    txt = f"[{item['category']}] {item['full_name']}  标签: 无"
-                    w = urwid.Text(txt)
-                    items.append(w)
-                    has_untagged = True
-            if not has_untagged:
+            untagged = [item for item in self.full_names if not self.tags.get(item['full_name'], [])]
+            if not untagged:
                 items.append(urwid.Text("所有仓库都已打标签！"))
+            else:
+                for idx, item in enumerate(untagged):
+                    is_selected = (idx == selected_idx)
+                    select_mark = '[X]' if is_selected else '[ ]'
+                    txt = f"{select_mark} [{item['category']}] {item['full_name']}  标签: 无"
+                    items.append(urwid.Text(txt))
         return items
 
     def wrap_focusable_items(self, items):
-        # 只包裹真正可选的仓库项，且返回 (focusable_items, focus_map)
-        focusable_items = []
-        focus_map = []
-        for w in items:
-            if isinstance(w, urwid.Text):
-                text = w.get_text()[0]
-                if not text.startswith('---') and not text.startswith('所有仓库'):
-                    focusable_items.append(urwid.AttrMap(w, None, 'focus'))
-                    focus_map.append(True)
-                else:
-                    focusable_items.append(w)
-                    focus_map.append(False)
-            else:
-                focusable_items.append(w)
-                focus_map.append(False)
-        return focusable_items, focus_map
+        # 所有仓库项都可选
+        return items, [True for _ in items]
 
     def get_logical_index(self, real_idx):
-        # real_idx为focusable_items中的索引，返回第几个可选项
-        items = self.make_items(self.view_mode)
-        _, focus_map = self.wrap_focusable_items(items)
-        count = -1
-        for i, is_focus in enumerate(focus_map):
-            if is_focus:
-                count += 1
-            if i == real_idx:
-                return count
-        return 0
+        return real_idx
 
     def get_focusable_index(self, n):
-        # n为逻辑选中项（如listbox.focus_position），返回第n个可选项在focusable_items中的真实索引
-        items = self.make_items(self.view_mode)
-        _, focus_map = self.wrap_focusable_items(items)
-        count = -1
-        for i, is_focus in enumerate(focus_map):
-            if is_focus:
-                count += 1
-            if count == n:
-                return i
-        return 0
+        return n
 
     def __init__(self, full_names):
         self.full_names = full_names
@@ -220,12 +181,12 @@ class TagApp:
 
         self.current = 0
         # 更新主界面的输入提示
-        self.edit = urwid.Edit(('editcp', u"输入标签(空格分隔): "))
+        # self.edit = urwid.Edit(('editcp', u"输入标签(空格分隔): "))  # 删除此行
         
         # 初始化视图模式
         self.view_mode = 'all' # 'all' 或 'untagged'
         
-        # 更新使用说明，添加切换视图和导出 Markdown 的提示
+        # 更新使用说明，去掉底部输入框相关内容
         self.info = urwid.Text(u"使用说明：\n1. 使用上下键选择仓库\n2. 按回车键打开标签输入窗口\n3. 输入标签（用空格分隔）\n4. 点击确定保存\n5. 按 q 键保存并退出\n6. 按 m 键导出Markdown\n7. 使用左右键切换视图 (全部/未打标签)")
         
         # 只用 AttrMap 包裹可选项，并在 SimpleFocusListWalker 里
@@ -239,18 +200,23 @@ class TagApp:
         # 必须先创建 self.frame，后面 update_list 不要再重新赋值 self.listbox.body
         self.frame = urwid.Frame(
             urwid.AttrWrap(self.listbox, 'body'),
-            footer=urwid.Pile([self.info, self.edit, self.status_text])
+            footer=urwid.Pile([self.info, self.status_text])  # 移除 self.edit
         )
         logger.info("TagApp 初始化完成")
 
     def update_list(self):
         items = self.make_items(self.view_mode)
         focusable_items, focus_map = self.wrap_focusable_items(items)
-        # 保持逻辑选中项不变
-        logical_idx = self.get_logical_index(self.listbox.focus_position)
+        # 保持当前 focus_position，不做任何索引映射
+        try:
+            focus_pos = self.listbox.focus_position
+        except Exception:
+            focus_pos = 0
         self.listbox.body[:] = focusable_items
-        # 重新设置焦点到逻辑选中项
-        self.listbox.focus_position = self.get_focusable_index(logical_idx)
+        # 重新设置焦点到原位置，防止越界
+        if focus_pos >= len(focusable_items):
+            focus_pos = max(0, len(focusable_items) - 1)
+        self.listbox.focus_position = focus_pos
         logger.debug(f"更新列表显示 - 视图模式: {self.view_mode}")
 
     def open_tag_popup(self, idx):
@@ -270,6 +236,8 @@ class TagApp:
         
         # 添加状态显示
         status = urwid.Text("")
+        # 新增：实时显示当前输入标签
+        tag_preview = urwid.Text(f"当前输入标签：{current_tags}")
         
         # 创建按钮
         ok_button = urwid.Button(('button', '确定'))
@@ -284,6 +252,7 @@ class TagApp:
             ('pack', instruction),
             ('pack', urwid.Divider()),
             ('pack', edit),
+            ('pack', tag_preview),  # 新增实时标签预览
             ('pack', urwid.Divider()),
             ('pack', status),
             ('pack', urwid.Divider()),
@@ -309,33 +278,60 @@ class TagApp:
             min_height=20
         )
         
-        def on_ok(button):
+        def on_ok(button=None):
             tag_input = edit.edit_text.strip()
             if not tag_input:
                 status.set_text(('error', "请输入至少一个标签"))
                 return
-                
             tags = [t.strip() for t in tag_input.split() if t.strip()]
             if not tags:
                 status.set_text(('error', "请输入有效的标签"))
                 return
-                
             self.tags[full_name] = tags
             logger.info(f"更新标签 - 仓库: {full_name}, 新标签: {tags}")
             self.update_list()
             self.loop.widget = self.frame
-            
-        def on_cancel(button):
+
+        def on_cancel(button=None):
             logger.info(f"取消标签编辑 - 仓库: {full_name}")
             self.loop.widget = self.frame
-            
+
         urwid.connect_signal(ok_button, 'click', on_ok)
         urwid.connect_signal(cancel_button, 'click', on_cancel)
-        
-        # 设置焦点到输入框
+
+        # 支持回车确认、ESC返回，并在每次输入时刷新界面
+        def popup_keypress(input):
+            if input == 'enter':
+                on_ok()
+                return
+            elif input == 'esc':
+                on_cancel()
+                return
+            # 让 edit 组件处理输入
+            edit.keypress((20,), input)
+            # 每次输入都刷新界面（重新设置 overlay）
+            tag_preview.set_text(f"当前输入标签：{edit.edit_text.strip()}")
+            self.loop.widget = overlay
+            return
         self.loop.widget = overlay
-        # 设置 pile 的焦点到编辑框
         pile.focus_position = 6  # edit 组件在 pile 中的位置
+        self.loop.unhandled_input = popup_keypress
+        # 恢复主界面按键处理
+        def restore_unhandled():
+            self.loop.unhandled_input = self.unhandled
+        # 在 on_ok/on_cancel 后恢复
+        orig_on_ok = on_ok
+        orig_on_cancel = on_cancel
+        def wrapped_on_ok(*args, **kwargs):
+            orig_on_ok(*args, **kwargs)
+            restore_unhandled()
+        def wrapped_on_cancel(*args, **kwargs):
+            orig_on_cancel(*args, **kwargs)
+            restore_unhandled()
+        urwid.disconnect_signal(ok_button, 'click', on_ok)
+        urwid.disconnect_signal(cancel_button, 'click', on_cancel)
+        urwid.connect_signal(ok_button, 'click', wrapped_on_ok)
+        urwid.connect_signal(cancel_button, 'click', wrapped_on_cancel)
 
     def unhandled(self, key):
         if key in ('q', 'Q'):
@@ -363,8 +359,8 @@ class TagApp:
                 self.status_text.set_text(u"显示：未打标签的仓库")
                 logger.info("切换视图：未打标签的仓库")
         else:
-            # 如果不是上述特殊按键，则调用原始的按键处理函数
-            return key
+            # 不再返回 key，防止误触发其他按键
+            return None
 
     def main(self):
         try:
@@ -384,12 +380,25 @@ class TagApp:
             self.loop = loop
             orig_keypress = self.listbox.keypress
             def listbox_keypress(size, key):
-                # 只对可选项做处理
                 idx = self.listbox.focus_position
                 logical_idx = self.get_logical_index(idx)
                 if key == 'enter':
                     self.open_tag_popup(logical_idx)
                     return None
+                elif key in ('up', 'down'):
+                    # 跳过不可选项，确保只在可选项间移动
+                    items = self.make_items(self.view_mode)
+                    focusable_items, focus_map = self.wrap_focusable_items(items)
+                    step = -1 if key == 'up' else 1
+                    next_idx = idx + step
+                    while 0 <= next_idx < len(focusable_items) and not focus_map[next_idx]:
+                        next_idx += step
+                    if 0 <= next_idx < len(focusable_items):
+                        self.listbox.focus_position = next_idx
+                        self.update_list()
+                        return None
+                    else:
+                        return None
                 return orig_keypress(size, key)
             self.listbox.keypress = listbox_keypress
             logger.info("开始运行主循环")
