@@ -1,6 +1,5 @@
-# 有🐛bug
-# 高亮的仓库和选中的仓库在未打标签模式下会有问题
-# 上下移动时有问题，会从最下面突然到最上面然后又回来
+# 修复版本 - 已修复高亮和选中仓库在未打标签模式下的问题
+# 修复上下移动时的跳跃问题
 
 import urwid
 import json
@@ -124,50 +123,6 @@ def export_markdown(tags, full_names):
         return f"导出 Markdown 时出错：{str(e)}"
 
 class TagApp:
-    def make_items(self, view_mode, focus_position=None):
-        items = []
-        # 只用当前列表的 focus_position
-        selected_idx = self.listbox.focus_position if hasattr(self, 'listbox') else 0
-        if view_mode == 'all':
-            tagged_repos = []
-            untagged_repos = []
-            for item in self.full_names:
-                full_name = item['full_name']
-                tags_list = self.tags.get(full_name, [])
-                if tags_list:
-                    tagged_repos.append((item, tags_list))
-                else:
-                    untagged_repos.append(item)
-            all_repos = tagged_repos + [(item, []) for item in untagged_repos]
-            for idx, (item, tags_list) in enumerate(all_repos):
-                is_selected = (idx == selected_idx)
-                tag_str = ' '.join(tags_list) if tags_list else '无'
-                select_mark = '[X]' if is_selected else '[ ]'
-                color = 'error' if tags_list else 'body'
-                txt = f"{select_mark} [{item['category']}] {item['full_name']}  标签: {tag_str}"
-                items.append(urwid.Text((color, txt)))
-        elif view_mode == 'untagged':
-            untagged = [item for item in self.full_names if not self.tags.get(item['full_name'], [])]
-            if not untagged:
-                items.append(urwid.Text("所有仓库都已打标签！"))
-            else:
-                for idx, item in enumerate(untagged):
-                    is_selected = (idx == selected_idx)
-                    select_mark = '[X]' if is_selected else '[ ]'
-                    txt = f"{select_mark} [{item['category']}] {item['full_name']}  标签: 无"
-                    items.append(urwid.Text(txt))
-        return items
-
-    def wrap_focusable_items(self, items):
-        # 所有仓库项都可选
-        return items, [True for _ in items]
-
-    def get_logical_index(self, real_idx):
-        return real_idx
-
-    def get_focusable_index(self, n):
-        return n
-
     def __init__(self, full_names):
         self.full_names = full_names
         
@@ -180,11 +135,12 @@ class TagApp:
                 self.tags[full_name] = tag_list
 
         self.current = 0
-        # 更新主界面的输入提示
-        # self.edit = urwid.Edit(('editcp', u"输入标签(空格分隔): "))  # 删除此行
         
         # 初始化视图模式
         self.view_mode = 'all' # 'all' 或 'untagged'
+        
+        # 添加当前视图的仓库列表缓存
+        self.current_view_repos = []
         
         # 更新使用说明，去掉底部输入框相关内容
         self.info = urwid.Text(u"使用说明：\n1. 使用上下键选择仓库\n2. 按回车键打开标签输入窗口\n3. 输入标签（用空格分隔）\n4. 点击确定保存\n5. 按 q 键保存并退出\n6. 按 m 键导出Markdown\n7. 使用左右键切换视图 (全部/未打标签)")
@@ -204,24 +160,128 @@ class TagApp:
         )
         logger.info("TagApp 初始化完成")
 
+    def make_items(self, view_mode, focus_position=None):
+        items = []
+        selected_idx = self.listbox.focus_position if hasattr(self, 'listbox') else 0
+        
+        if view_mode == 'all':
+            # 构建所有仓库列表（已标签的在前，未标签的在后）
+            tagged_repos = []
+            untagged_repos = []
+            for item in self.full_names:
+                full_name = item['full_name']
+                tags_list = self.tags.get(full_name, [])
+                if tags_list:
+                    tagged_repos.append((item, tags_list))
+                else:
+                    untagged_repos.append((item, []))
+            
+            self.current_view_repos = tagged_repos + untagged_repos
+            
+            for idx, (item, tags_list) in enumerate(self.current_view_repos):
+                is_selected = (idx == selected_idx)
+                tag_str = ' '.join(tags_list) if tags_list else '无'
+                select_mark = '[X]' if is_selected else '[ ]'
+                color = 'error' if tags_list else 'body'
+                txt = f"{select_mark} [{item['category']}] {item['full_name']}  标签: {tag_str}"
+                items.append(urwid.Text((color, txt)))
+                
+        elif view_mode == 'untagged':
+            # 只显示未打标签的仓库
+            untagged_repos = []
+            for item in self.full_names:
+                if not self.tags.get(item['full_name'], []):
+                    untagged_repos.append((item, []))
+            
+            self.current_view_repos = untagged_repos
+            
+            if not untagged_repos:
+                items.append(urwid.Text("所有仓库都已打标签！"))
+                self.current_view_repos = []
+            else:
+                for idx, (item, _) in enumerate(untagged_repos):
+                    is_selected = (idx == selected_idx)
+                    select_mark = '[X]' if is_selected else '[ ]'
+                    txt = f"{select_mark} [{item['category']}] {item['full_name']}  标签: 无"
+                    items.append(urwid.Text(txt))
+        
+        return items
+
+    def wrap_focusable_items(self, items):
+        # 所有仓库项都可选
+        return items, [True for _ in items]
+
+    def get_logical_index(self, view_idx):
+        """将当前视图的索引转换为全局仓库列表的索引"""
+        if not self.current_view_repos or view_idx >= len(self.current_view_repos):
+            return 0
+            
+        # 在当前视图中找到对应的仓库
+        target_repo = self.current_view_repos[view_idx][0]
+        target_full_name = target_repo['full_name']
+        
+        # 在全局列表中找到对应的索引
+        for idx, item in enumerate(self.full_names):
+            if item['full_name'] == target_full_name:
+                return idx
+        
+        return 0
+
+    def get_focusable_index(self, global_idx):
+        """将全局索引转换为当前视图的索引"""
+        if global_idx >= len(self.full_names):
+            return 0
+            
+        target_full_name = self.full_names[global_idx]['full_name']
+        
+        # 在当前视图中找到对应的索引
+        for idx, (repo, _) in enumerate(self.current_view_repos):
+            if repo['full_name'] == target_full_name:
+                return idx
+        
+        return 0
+
     def update_list(self):
+        # 保存当前选中的仓库信息，而不是索引
+        current_repo_name = None
+        if hasattr(self, 'listbox') and self.current_view_repos:
+            try:
+                current_idx = self.listbox.focus_position
+                if 0 <= current_idx < len(self.current_view_repos):
+                    current_repo_name = self.current_view_repos[current_idx][0]['full_name']
+            except:
+                pass
+        
         items = self.make_items(self.view_mode)
         focusable_items, focus_map = self.wrap_focusable_items(items)
-        # 保持当前 focus_position，不做任何索引映射
-        try:
-            focus_pos = self.listbox.focus_position
-        except Exception:
-            focus_pos = 0
+        
         self.listbox.body[:] = focusable_items
-        # 重新设置焦点到原位置，防止越界
-        if focus_pos >= len(focusable_items):
-            focus_pos = max(0, len(focusable_items) - 1)
-        self.listbox.focus_position = focus_pos
-        logger.debug(f"更新列表显示 - 视图模式: {self.view_mode}")
+        
+        # 尝试恢复到相同的仓库位置
+        new_focus_pos = 0
+        if current_repo_name and self.current_view_repos:
+            for idx, (repo, _) in enumerate(self.current_view_repos):
+                if repo['full_name'] == current_repo_name:
+                    new_focus_pos = idx
+                    break
+        
+        # 确保焦点位置有效
+        if new_focus_pos >= len(focusable_items):
+            new_focus_pos = max(0, len(focusable_items) - 1)
+            
+        if len(focusable_items) > 0:
+            self.listbox.focus_position = new_focus_pos
+            
+        logger.debug(f"更新列表显示 - 视图模式: {self.view_mode}, 焦点位置: {new_focus_pos}")
 
-    def open_tag_popup(self, idx):
-        full_name = self.full_names[idx]['full_name']
-        description = self.full_names[idx].get('description', '无描述')
+    def open_tag_popup(self, global_idx):
+        """使用全局索引打开标签编辑窗口"""
+        if global_idx >= len(self.full_names):
+            return
+            
+        repo_info = self.full_names[global_idx]
+        full_name = repo_info['full_name']
+        description = repo_info.get('description', '无描述')
         current_tags = ' '.join(self.tags[full_name])
         logger.info(f"打开标签编辑窗口 - 仓库: {full_name}, 当前标签: {current_tags}")
         
@@ -379,27 +439,27 @@ class TagApp:
             )
             self.loop = loop
             orig_keypress = self.listbox.keypress
+            
             def listbox_keypress(size, key):
+                if not self.current_view_repos:
+                    return orig_keypress(size, key)
+                    
                 idx = self.listbox.focus_position
-                logical_idx = self.get_logical_index(idx)
+                
                 if key == 'enter':
+                    # 使用修复后的索引转换
+                    logical_idx = self.get_logical_index(idx)
                     self.open_tag_popup(logical_idx)
                     return None
                 elif key in ('up', 'down'):
-                    # 跳过不可选项，确保只在可选项间移动
-                    items = self.make_items(self.view_mode)
-                    focusable_items, focus_map = self.wrap_focusable_items(items)
-                    step = -1 if key == 'up' else 1
-                    next_idx = idx + step
-                    while 0 <= next_idx < len(focusable_items) and not focus_map[next_idx]:
-                        next_idx += step
-                    if 0 <= next_idx < len(focusable_items):
-                        self.listbox.focus_position = next_idx
-                        self.update_list()
-                        return None
-                    else:
-                        return None
+                    # 简化上下移动逻辑，让urwid处理基本移动
+                    result = orig_keypress(size, key)
+                    # 移动后更新显示
+                    self.update_list()
+                    return result
+                    
                 return orig_keypress(size, key)
+                
             self.listbox.keypress = listbox_keypress
             logger.info("开始运行主循环")
             loop.run()
