@@ -67,6 +67,8 @@
 
 ## Python
 
+*   [ozh/github-colors](https://github.com/ozh/github-colors) - 🌈 Github colors for all the languages
+
 *   [urwid/urwid](https://github.com/urwid/urwid) - Console user interface library for Python (official repo)
 
 *   [ZhuoZhuoCrayon/throttled-py](https://github.com/ZhuoZhuoCrayon/throttled-py) - 🔧 High-performance Python rate limiting library with multiple algorithms (Fixed Window, Sliding Window, Token Bucket, Leaky Bucket & GCRA) and storage backends (Redis, In-Memory).
@@ -2068,8 +2070,6 @@
 *   [Fallen-Breath/tweakermore](https://github.com/Fallen-Breath/tweakermore) - A collection of client-side tweak kits to enhance your Minecraft game experience. Tweak Minecraft and beyond!
 
 *   [Andrews54757/tweakfork](https://github.com/Andrews54757/tweakfork) - A modified small client-side Minecraft mod that adds various configurable tweaks - plus some more
-
-*   [maruohon/minihud](https://github.com/maruohon/minihud) - A client-side Minecraft mod with configurable "info lines" ("mini-F3") and various overlays, such as light level and structure bounding boxes
 
 ## Visual Basic .NET
 
